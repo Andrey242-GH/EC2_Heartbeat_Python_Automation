@@ -42,7 +42,7 @@ Logs can be reviewed via journalctl and the output file
 ## Repository structure
 
 ```text
-ec2-heartbeat-automation/
+EC2_Heartbeat_Python_Automation/
 ├── src/
 │   └── heartbeat.py
 ├── tests/
@@ -113,7 +113,7 @@ Important details:
 - output is sent to the Linux journal
 - environment variables control configuration and runtime behavior
 
-Replace YOUR-USERNAME with your actual GitHub username or service account as needed.
+The checked-in service runs as the dedicated `heartbeat` account and uses the paths shown in the deployment instructions below.
 
 ### heartbeat.timer
 
@@ -168,7 +168,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 You should see the prompt change to something like:
 
 ```powershell
-(.venv) PS C:\Development_Folder\Python\ec2_heartbeat_automation>
+(.venv) PS C:\Development_Folder\Python\EC2_Heartbeat_Python_Automation>
 ```
 
 ### 3. Verify the environment
@@ -224,11 +224,156 @@ If you want to install test tooling manually:
 pip install pytest
 ```
 
-## Deployment notes
+## EC2 deployment
 
-After the script is installed on an EC2 instance and configured with a systemd service and timer, it will emit heartbeat events automatically without requiring manual interaction or a long-running process.
+These steps install the application on Amazon Linux and configure `systemd` to run it once per minute. They assume the repository is publicly accessible and use the `heartbeat` service account and file paths configured in the included unit files.
 
-This gives you a reliable operational check that the automation is still running, while also providing enough metadata to troubleshoot failures and understand execution history over time.
+### 1. Launch and connect to an EC2 instance
+
+In the AWS console:
+
+1. Open **EC2** and choose **Launch instance**.
+2. Choose an Amazon Linux AMI, such as Amazon Linux 2023.
+3. Select an instance type appropriate for your account and workload.
+4. Create or select a key pair if you plan to connect over SSH.
+5. In the security group, allow inbound SSH (TCP port `22`) only from your current IP address if using SSH.
+6. Launch the instance.
+
+This application does not host a website or API. Do not open inbound ports `80`, `443`, `5000`, or `8000`. If connecting through EC2 Instance Connect or Session Manager, follow the AWS setup requirements for that method; you can skip the local SSH commands, and you may not need an inbound SSH rule.
+
+To connect from a Bash terminal using SSH:
+
+```bash
+chmod 400 my-ec2-key.pem
+ssh -i my-ec2-key.pem ec2-user@EC2_PUBLIC_IP
+```
+
+Replace `my-ec2-key.pem` with the path to your downloaded private key and `EC2_PUBLIC_IP` with the instance's public IP address. Run these commands on your own computer, not in the EC2 shell.
+
+### 2. Install the application
+
+Run the following commands after connecting to the instance. The account is used to run the service without root privileges.
+
+```bash
+sudo dnf update -y
+sudo dnf install -y git python3
+
+sudo useradd \
+  --system \
+  --home-dir /opt/EC2_Heartbeat_Python_Automation \
+  --shell /sbin/nologin \
+  heartbeat
+
+sudo git clone \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+
+sudo chown -R \
+  heartbeat:heartbeat \
+  /opt/EC2_Heartbeat_Python_Automation
+
+sudo -u heartbeat \
+  python3 -m venv \
+  /opt/EC2_Heartbeat_Python_Automation/.venv
+
+sudo -u heartbeat \
+  /opt/EC2_Heartbeat_Python_Automation/.venv/bin/python -m pip \
+  install -r \
+  /opt/EC2_Heartbeat_Python_Automation/requirements.txt
+```
+
+Create the event log directory. The service account needs write access because the script appends events there.
+
+```bash
+sudo mkdir -p /var/lib/heartbeat
+sudo chown heartbeat:heartbeat /var/lib/heartbeat
+sudo chmod 750 /var/lib/heartbeat
+```
+
+Run the tests before enabling the scheduled job:
+
+```bash
+cd /opt/EC2_Heartbeat_Python_Automation
+sudo -u heartbeat .venv/bin/python -m pytest -v
+```
+
+### 3. Install and enable the systemd timer
+
+Copy the service and timer definitions from the repository, then ask systemd to reload its configuration:
+
+```bash
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.service \
+  /etc/systemd/system/heartbeat.service
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
+  /etc/systemd/system/heartbeat.timer
+
+sudo systemctl daemon-reload
+```
+
+Run the service once manually to verify it can write its output, then enable the timer:
+
+```bash
+sudo systemctl start heartbeat.service
+sudo systemctl status heartbeat.service --no-pager
+sudo systemctl enable --now heartbeat.timer
+```
+
+The timer is configured to run the service once per minute. A successful one-shot service may show as `inactive (dead)` after it finishes; check its result and output rather than expecting it to remain running.
+
+### 4. Verify and troubleshoot
+
+Check when the next run is scheduled:
+
+```bash
+systemctl list-timers --all | grep heartbeat
+```
+
+Inspect recent JSON events:
+
+```bash
+sudo tail -n 10 /var/lib/heartbeat/events.jsonl
+```
+
+Read recent service logs:
+
+```bash
+sudo journalctl -u heartbeat.service --since "10 minutes ago" --no-pager
+```
+
+If a run fails, inspect the journal for the error, confirm that the virtual environment exists, and check that `/var/lib/heartbeat` is writable by the `heartbeat` account.
+
+### 5. Deploy later repository changes
+
+After pushing changes to the repository, connect to the instance and update the checkout. These commands assume the default branch is `main`.
+
+```bash
+sudo -u heartbeat git \
+  -C /opt/EC2_Heartbeat_Python_Automation \
+  pull --ff-only origin main
+
+sudo -u heartbeat \
+  /opt/EC2_Heartbeat_Python_Automation/.venv/bin/python -m pip \
+  install -r \
+  /opt/EC2_Heartbeat_Python_Automation/requirements.txt
+
+cd /opt/EC2_Heartbeat_Python_Automation
+sudo -u heartbeat .venv/bin/python -m pytest -v
+```
+
+If the update changes either systemd unit file, copy the updated file(s) to `/etc/systemd/system/` and reload systemd:
+
+```bash
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.service \
+  /etc/systemd/system/heartbeat.service
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
+  /etc/systemd/system/heartbeat.timer
+sudo systemctl daemon-reload
+sudo systemctl restart heartbeat.timer
+```
 
 ## Summary
 
