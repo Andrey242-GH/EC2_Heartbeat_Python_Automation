@@ -192,11 +192,31 @@ python --version
 pip --version
 ```
 
-### 5. Run tests
+### 5. Run the heartbeat locally
+
+In Bash (including Linux and GitHub Codespaces), run:
 
 ```bash
-pytest -q
+OUTPUT_FILE="./events.jsonl" ENVIRONMENT="local" python src/heartbeat.py
 ```
+
+In Windows PowerShell, run:
+
+```powershell
+$env:OUTPUT_FILE="./events.jsonl"
+$env:ENVIRONMENT="local"
+python .\src\heartbeat.py
+```
+
+Both commands append a heartbeat event to `events.jsonl` in the project directory.
+
+### 6. Run tests
+
+```bash
+pytest -v
+```
+
+Run this after setting up the environment to check that the heartbeat code behaves as expected. The `-v` option enables verbose output, listing each test by name and showing whether it passed or failed. The tests verify the heartbeat's status and required fields, and check that its run ID and timestamp have valid formats.
 
 If you want to install test tooling manually:
 
