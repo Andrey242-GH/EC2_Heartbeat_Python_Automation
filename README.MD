@@ -549,6 +549,42 @@ The application provides three addresses:
 /api/events    Raw JSON records
 /health        Application health check
 
+# Test it in Codespaces
+
+Install the requirements:
+
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+Generate several records:
+
+OUTPUT_FILE="./events.jsonl" \
+ENVIRONMENT="codespaces" \
+JOB_NAME="guid-heartbeat" \
+python src/heartbeat.py
+
+Then launch the Flask application:
+
+OUTPUT_FILE="./events.jsonl" python src/app.py
+
+Run it every 10 seconds in Codespaces
+
+For testing only, open a second Codespaces terminal:
+
+while true
+do
+    OUTPUT_FILE="./events.jsonl" \
+    ENVIRONMENT="codespaces" \
+    JOB_NAME="guid-heartbeat" \
+    python src/heartbeat.py
+
+    sleep 10
+done
+
+
+
 ## Summary
 
 The EC2 heartbeat automation is a small but practical monitoring pattern for scheduled work. It helps confirm that jobs are alive, captures execution context, and writes machine-readable records that can be searched in logs or parsed later for alerting, auditing, or operational analysis.
