@@ -29,30 +29,39 @@ The script is designed to be simple and reliable:
 
 GitHub repository
         ↓ git clone / git pull
-Amazon EC2 instance
-        ↓
-systemd timer runs every minute
-        ↓
-Python script emits a heartbeat event
-        ↓
-JSON line is appended to a log file
-        ↓
-Logs can be reviewed via journalctl and the output file
+Amazon EC2
+        ├── heartbeat.timer
+        │       ↓ every minute
+        │   heartbeat.service
+        │       ↓
+        │   heartbeat.py
+        │       ↓
+        │   /var/lib/heartbeat/events.jsonl
+        │
+        └── heartbeat-web.service
+                ↓ always running
+            Gunicorn + Flask
+                ↓
+            Reads events.jsonl
+                ↓
+            Browser
 
 ## Repository structure
 
 ```text
 EC2_Heartbeat_Python_Automation/
 ├── src/
-│   └── heartbeat.py
+│   ├── heartbeat.py
 │   └── app.py
+├── templates/
+│   └── index.html
 ├── tests/
 │   └── test_heartbeat.py
 ├── systemd/
 │   ├── heartbeat.service
-│   └── heartbeat.timer
+│   ├── heartbeat.timer
+│   └── heartbeat-web.service
 ├── .gitignore
-├── events.jsonl
 ├── README.md
 └── requirements.txt
 ```
@@ -531,7 +540,14 @@ Timeout
 Nginx default page (if Nginx is installed)
 Blank page
 
+so i added an app.py for a flask app
 
+
+The application provides three addresses:
+
+/              Web dashboard
+/api/events    Raw JSON records
+/health        Application health check
 
 ## Summary
 

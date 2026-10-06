@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <!-- Refresh the dashboard every 10 seconds -->
+    <meta http-equiv="refresh" content="10">
+
+    <title>EC2 Heartbeat Dashboard</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px 20px;
+            background: #f4f7fb;
+            color: #172033;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            padding: 30px;
+            margin-bottom: 24px;
+            border-radius: 14px;
+            background: #02243a;
+            color: white;
+        }
+
+        .header h1 {
+            margin: 0 0 8px;
+        }
+
+        .header p {
+            margin: 0;
+            color: #d7e9f3;
+        }
+
+        .summary {
+            display: inline-block;
+            margin-top: 18px;
+            padding: 9px 15px;
+            border-radius: 20px;
+            background: #137cbd;
+            font-weight: bold;
+        }
+
+        .refresh-note {
+            margin: 12px 0 0;
+            font-size: 13px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 14px;
+            background: white;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            padding: 14px;
+            background: #137cbd;
+            color: white;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 14px;
+            border-bottom: 1px solid #e7ecf1;
+            vertical-align: top;
+        }
+
+        tr:hover {
+            background: #f5faff;
+        }
+
+        .guid {
+            min-width: 290px;
+            font-family: Consolas, monospace;
+            font-size: 13px;
+        }
+
+        .success {
+            color: #08783e;
+            font-weight: bold;
+        }
+
+        .empty {
+            padding: 30px;
+            border-radius: 14px;
+            background: white;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <section class="header">
+            <h1>EC2 Heartbeat Dashboard</h1>
+
+            <p>
+                Scheduled automation execution history
+            </p>
+
+            <span class="summary">
+                Displayed events: {{ total_events }}
+            </span>
+
+            <p class="refresh-note">
+                This page refreshes automatically every 10 seconds.
+            </p>
+        </section>
+
+        {% if events %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run ID</th>
+                            <th>Timestamp</th>
+                            <th>Job</th>
+                            <th>Status</th>
+                            <th>Environment</th>
+                            <th>Hostname</th>
+                            <th>Process ID</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for event in events %}
+                            <tr>
+                                <td class="guid">
+                                    {{ event.run_id }}
+                                </td>
+
+                                <td>
+                                    {{ event.timestamp_utc }}
+                                </td>
+
+                                <td>
+                                    {{ event.job_name }}
+                                </td>
+
+                                <td class="success">
+                                    {{ event.status }}
+                                </td>
+
+                                <td>
+                                    {{ event.environment }}
+                                </td>
+
+                                <td>
+                                    {{ event.hostname }}
+                                </td>
+
+                                <td>
+                                    {{ event.process_id }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty">
+                <h2>No heartbeat records yet</h2>
+
+                <p>
+                    Run heartbeat.py or wait for the systemd timer
+                    to generate the first record.
+                </p>
+            </div>
+        {% endif %}
+    </main>
+</body>
+</html>
