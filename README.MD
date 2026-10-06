@@ -454,6 +454,24 @@ systemctl enable --now heartbeat.timer
 echo "Heartbeat automation deployment completed."
 ```
 
+it is possible to get the data froma github branch with
+
+```bash
+git clone \
+  --single-branch \
+  --branch EC2_Flask_Dashboard \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+```
+
+instead of 
+
+```bash
+git clone \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+```
+
 User-data runs during instance initialization. Its output is written to
 `/var/log/user-data.log`. After the instance launches, connect to it and use
 the following commands to verify the deployment.
