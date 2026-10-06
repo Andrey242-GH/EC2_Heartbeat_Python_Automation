@@ -375,6 +375,117 @@ sudo systemctl daemon-reload
 sudo systemctl restart heartbeat.timer
 ```
 
+## Deploying with EC2 user data
+
+EC2 user data can automate the initial setup when an instance launches. The
+following example is for an Amazon Linux instance with `dnf`; it installs the
+required packages, configures the `heartbeat` service account and Python
+environment, runs the tests, and enables the systemd timer.
+
+```bash
+#!/bin/bash
+
+# Log user-data output for troubleshooting.
+exec > >(tee /var/log/user-data.log)
+exec 2>&1
+
+echo "Starting EC2 Heartbeat Automation setup..."
+
+# Update the operating system and install dependencies.
+dnf update -y
+dnf install -y git python3
+
+# Create a dedicated service account.
+useradd \
+  --system \
+  --home-dir /opt/EC2_Heartbeat_Python_Automation \
+  --shell /sbin/nologin \
+  heartbeat || true
+
+# Clone the repository.
+git clone \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+
+# Set repository ownership.
+chown -R heartbeat:heartbeat \
+  /opt/EC2_Heartbeat_Python_Automation
+
+# Create a Python virtual environment.
+sudo -u heartbeat \
+  python3 -m venv \
+  /opt/EC2_Heartbeat_Python_Automation/.venv
+
+# Install Python requirements.
+sudo -u heartbeat \
+  /opt/EC2_Heartbeat_Python_Automation/.venv/bin/python \
+  -m pip install --upgrade pip
+
+sudo -u heartbeat \
+  /opt/EC2_Heartbeat_Python_Automation/.venv/bin/python \
+  -m pip install -r \
+  /opt/EC2_Heartbeat_Python_Automation/requirements.txt
+
+# Create the directory used to store heartbeat events.
+mkdir -p /var/lib/heartbeat
+chown heartbeat:heartbeat /var/lib/heartbeat
+chmod 750 /var/lib/heartbeat
+
+# Run the test suite.
+cd /opt/EC2_Heartbeat_Python_Automation
+
+sudo -u heartbeat \
+  .venv/bin/python -m pytest -v
+
+# Install the systemd service and timer.
+cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.service \
+  /etc/systemd/system/heartbeat.service
+
+cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
+  /etc/systemd/system/heartbeat.timer
+
+# Reload systemd, run the service once, and enable the recurring timer.
+systemctl daemon-reload
+systemctl start heartbeat.service
+systemctl enable --now heartbeat.timer
+
+echo "Heartbeat automation deployment completed."
+```
+
+User-data runs during instance initialization. Its output is written to
+`/var/log/user-data.log`. After the instance launches, connect to it and use
+the following commands to verify the deployment.
+
+### Confirm that the timer is scheduled
+
+```bash
+systemctl list-timers --all | grep heartbeat
+```
+
+### Check the timer and service status
+
+```bash
+sudo systemctl status heartbeat.timer
+sudo systemctl status heartbeat.service
+```
+
+### Inspect generated heartbeat events
+
+```bash
+sudo tail -n 20 /var/lib/heartbeat/events.jsonl
+```
+
+### Review recent service logs
+
+```bash
+sudo journalctl \
+  -u heartbeat.service \
+  --since "10 minutes ago" \
+  --no-pager
+```
+
 ## Summary
 
 The EC2 heartbeat automation is a small but practical monitoring pattern for scheduled work. It helps confirm that jobs are alive, captures execution context, and writes machine-readable records that can be searched in logs or parsed later for alerting, auditing, or operational analysis.
