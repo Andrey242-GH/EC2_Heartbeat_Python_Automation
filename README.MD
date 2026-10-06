@@ -45,12 +45,14 @@ Logs can be reviewed via journalctl and the output file
 EC2_Heartbeat_Python_Automation/
 ├── src/
 │   └── heartbeat.py
+│   └── app.py
 ├── tests/
 │   └── test_heartbeat.py
 ├── systemd/
 │   ├── heartbeat.service
 │   └── heartbeat.timer
 ├── .gitignore
+├── events.jsonl
 ├── README.md
 └── requirements.txt
 ```
@@ -147,6 +149,18 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+do not forget to install flask
+
+```bash
+python -m pip install flask
+```
+
+this is to save all the requirements 
+
+```bash
+python -m pip freeze > requirements.txt
 ```
 
 ### 2. On Windows PowerShell
@@ -454,7 +468,7 @@ systemctl enable --now heartbeat.timer
 echo "Heartbeat automation deployment completed."
 ```
 
-it is possible to get the data froma github branch with
+it is possible to get the data from github branch with this bash code instead.
 
 ```bash
 git clone \
@@ -503,6 +517,21 @@ sudo journalctl \
   --since "10 minutes ago" \
   --no-pager
 ```
+
+# view output on Public IPv4 address
+
+If you want to open your EC2 Public IPv4 address in a browser and see your Python automation output, your script must be running as a web application.
+
+Right now, the heartbeat.py script we created only writes to a file.
+
+there is nothing listening on port 80, so you'll either see:
+
+Connection refused
+Timeout
+Nginx default page (if Nginx is installed)
+Blank page
+
+
 
 ## Summary
 
