@@ -1,5 +1,5 @@
 blinker==1.9.0
-click==8.5.0
+click
 Flask==3.1.2
 gunicorn==23.0.0
 iniconfig==2.3.0

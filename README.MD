@@ -319,7 +319,21 @@ sudo useradd \
   --shell /sbin/nologin \
   heartbeat
 
+# this is to check it got created
+
+id heartbeat
+
+# This is to copy the main branch (either one)
+
 sudo git clone \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+
+# This is to copy the data from another branch other than main (either one)
+
+sudo git clone \
+  --single-branch \
+  --branch EC2_Flask_Dashboard \
   https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
   /opt/EC2_Heartbeat_Python_Automation
 
