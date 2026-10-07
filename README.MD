@@ -381,6 +381,9 @@ sudo cp \
 sudo cp \
   /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
   /etc/systemd/system/heartbeat.timer
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat-web.service \
+  /etc/systemd/system/heartbeat-web.service
 
 sudo systemctl daemon-reload
 ```
@@ -447,10 +450,28 @@ sudo cp \
 sudo cp \
   /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat-web.service \
   /etc/systemd/system/heartbeat-web.service
+
 sudo systemctl daemon-reload
+
 sudo systemctl restart heartbeat.timer
 sudo systemctl enable --now heartbeat-web.service
+sudo systemctl enable --now heartbeat-web.service
 ```
+if you want to check if the servers are running, use these commands
+
+```bash
+sudo systemctl status heartbeat-web.service
+sudo systemctl status heartbeat.timer
+
+sudo journalctl -u heartbeat-web.service -n 50 --no-pager
+
+sudo systemctl is-enabled heartbeat-web.service
+sudo systemctl is-enabled heartbeat.timer
+
+sudo systemctl status heartbeat-web.service
+sudo journalctl -u heartbeat-web.service -n 30 --no-pager
+```
+
 
 ## Deploying with EC2 user data
 
