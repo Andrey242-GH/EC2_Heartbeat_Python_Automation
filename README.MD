@@ -708,6 +708,20 @@ http://YOUR_EC2_PUBLIC_IPV4:5000
 
 Do not open only port 80 yet. For this setup, you must add `:5000`.
 
+i found a problem and it was that the gunicorn was not installed so I first entered 
+
+ls -l /opt/EC2_Heartbeat_Python_Automation/.venv/bin/gunicorn
+
+and i got this "No such file or directory"
+
+so i run this:
+
+sudo -u heartbeat \
+/opt/EC2_Heartbeat_Python_Automation/.venv/bin/pip \
+install gunicorn flask
+
+and it worked
+
 ## Summary
 
 The EC2 heartbeat automation is a small but practical monitoring pattern for scheduled work. It helps confirm that jobs are alive, captures execution context, and writes machine-readable records that can be searched in logs or parsed later for alerting, auditing, or operational analysis.
