@@ -27,24 +27,26 @@ The script is designed to be simple and reliable:
 
 ## Architecture
 
+```text
 GitHub repository
-        ↓ git clone / git pull
+|------ ↓ git clone / git pull
 Amazon EC2
-        ├── heartbeat.timer
-        │       ↓ every minute
-        │   heartbeat.service
-        │       ↓
-        │   heartbeat.py
-        │       ↓
-        │   /var/lib/heartbeat/events.jsonl
-        │
-        └── heartbeat-web.service
-                ↓ always running
+|------ ├── heartbeat.timer
+|------ │       ↓ every minute
+|------ │   heartbeat.service
+|------ │       ↓
+|------ │   heartbeat.py
+|------ │       ↓
+|------ │   /var/lib/heartbeat/events.jsonl
+|------ │
+|------ └── heartbeat-web.service
+|-------------- ↓ always running
             Gunicorn + Flask
-                ↓
+|-------------- ↓
             Reads events.jsonl
-                ↓
+|-------------- ↓
             Browser
+```
 
 ## Repository structure
 
@@ -68,6 +70,18 @@ EC2_Heartbeat_Python_Automation/
 
 ## Python automation
 
+### app.py
+
+`app.py` is the small Flask web application that turns the heartbeat log into a live dashboard. It reads the JSON records from `events.jsonl`, sorts them newest-first, and serves them in a browser-friendly format.
+
+It provides three useful endpoints:
+
+- `/` displays the dashboard page with a table of recent EC2 job runs
+- `/api/events` returns the same event data as JSON for scripts or monitoring tools
+- `/health` reports the application status so it can be checked by a load balancer or a quick curl command
+
+This file is the web-facing part of the project. The actual heartbeat job still runs separately in `heartbeat.py`; `app.py` simply reads and displays the data.
+
 ### heartbeat.py
 
 The heartbeat script is responsible for generating a single event each time it runs. In practice, it:
@@ -78,6 +92,8 @@ The heartbeat script is responsible for generating a single event each time it r
 4. records the EC2 hostname and job context
 5. writes a JSON object to the configured log file
 6. exits with an appropriate status code
+
+This script is intentionally lightweight and safe for scheduled automation. It writes one JSON object per execution, which makes it easy to review logs later or feed into monitoring systems.
 
 Example output:
 
@@ -95,6 +111,12 @@ Example output:
 }
 ```
 
+## index.html
+
+`index.html` is the dashboard page that users see in the browser. It uses the events passed from `app.py` to build a table showing recent heartbeat activity, including the run ID, timestamp, job name, status, environment, hostname, and process ID.
+
+It also includes a live refresh so the page updates automatically every 10 seconds, which is helpful when you're watching a fleet of automation jobs in real time. If there are no heartbeat events yet, the page shows a friendly empty-state message instead of a blank table.
+
 ### test_heartbeat.py
 
 The test suite verifies that the script produces a valid heartbeat record by checking:
@@ -106,7 +128,12 @@ The test suite verifies that the script produces a valid heartbeat record by che
 
 ### requirements.txt
 
-The automation itself uses Python's standard library. pytest is included only for testing support.
+This file tracks the Python packages required by the project. The core heartbeat script uses Python's standard library, but the web dashboard introduces a dependency on Flask and Gunicorn. After adding the dashboard, you should keep the package list current with commands such as:
+
+```bash
+python -m pip install flask gunicorn
+python -m pip freeze > requirements.txt
+```
 
 ### .gitignore
 
@@ -129,6 +156,10 @@ The checked-in service runs as the dedicated `heartbeat` account and uses the pa
 ### heartbeat.timer
 
 `Persistent=true` ensures the job is triggered again if the server was offline when the timer was scheduled to fire.
+
+### heartbeat-web.service
+
+This systemd unit starts the Flask app with Gunicorn so the dashboard stays running in the background. It binds the app to port 5000, points at the same `events.jsonl` file used by the heartbeat job, and restarts automatically if it crashes. In other words, `heartbeat-web.service` is what makes the web monitoring page available to anyone browsing the EC2 instance.
 
 ## Operational notes
 
@@ -160,17 +191,18 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If needed, install Flask:
+After the initial heartbeat script was working, I noticed there was no easy way to view the generated events from a browser. To solve that, I added a lightweight Flask dashboard, which is why the project now includes the web app and the Flask dependency.
 
-```bash
-python -m pip install flask
-```
+```text
+If needed, install the dashboard dependencies:
+
+python -m pip install flask gunicorn
 
 To save the current dependencies:
 
-```bash
 python -m pip freeze > requirements.txt
 ```
+
 
 ### 2. On Windows PowerShell
 
@@ -455,7 +487,7 @@ mkdir -p /var/lib/heartbeat
 chown heartbeat:heartbeat /var/lib/heartbeat
 chmod 750 /var/lib/heartbeat
 
-# Run the test suite.
+# Run the test suite (Optional). this action is for testing and it may cause problems
 cd /opt/EC2_Heartbeat_Python_Automation
 
 sudo -u heartbeat \
@@ -710,15 +742,19 @@ Do not open only port 80 yet. For this setup, you must add `:5000`.
 
 i found a problem and it was that the gunicorn was not installed so I first entered 
 
+```bash
 ls -l /opt/EC2_Heartbeat_Python_Automation/.venv/bin/gunicorn
+```
 
 and i got this "No such file or directory"
 
 so i run this:
 
+```bash
 sudo -u heartbeat \
 /opt/EC2_Heartbeat_Python_Automation/.venv/bin/pip \
 install gunicorn flask
+```
 
 and it worked
 
