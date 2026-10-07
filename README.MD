@@ -337,6 +337,10 @@ sudo git clone \
   https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
   /opt/EC2_Heartbeat_Python_Automation
 
+  # if there is an error and you need to reinstall it, use the following:
+
+  sudo rm -rf /opt/EC2_Heartbeat_Python_Automation
+
 sudo chown -R \
   heartbeat:heartbeat \
   /opt/EC2_Heartbeat_Python_Automation
