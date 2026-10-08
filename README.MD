@@ -232,6 +232,7 @@ These steps install the application on Amazon Linux and configure `systemd` to r
 
 In the AWS console:
 
+
 1. Open **EC2** and choose **Launch instance**.
 2. Choose an Amazon Linux AMI, such as Amazon Linux 2023.
 3. Select an instance type appropriate for your account and workload.
