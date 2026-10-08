@@ -1,12 +1,12 @@
 # EC2 Heartbeat Automation
 
-This project creates a lightweight heartbeat for EC2-based automation jobs. Every minute, the script records a structured JSON event containing metadata about the run such as a unique execution ID, timestamp, hostname, environment, job name, status, and process information.
+This project creates a lightweight heartbeat for EC2-based automation jobs. Every minute, the script records a structured JSON event containing metadata about the run, including a unique execution ID, timestamp, hostname, environment, job name, status, and process information.
 
 This pattern is useful for tracking scheduled jobs, QA runs, batch automation, and overall system health in a way that is easy to query from logs or files.
 
 ## What the Python script does
 
-Each execution collects and writes a heartbeat event in JSON format. The record includes details such as:
+Each execution collects and writes a heartbeat event in JSON format. The record includes:
 
 - run_id: unique identifier for the execution
 - timestamp_utc: UTC timestamp for the run
@@ -27,29 +27,42 @@ The script is designed to be simple and reliable:
 
 ## Architecture
 
+```text
 GitHub repository
-        ↓ git clone / git pull
-Amazon EC2 instance
-        ↓
-systemd timer runs every minute
-        ↓
-Python script emits a heartbeat event
-        ↓
-JSON line is appended to a log file
-        ↓
-Logs can be reviewed via journalctl and the output file
+|------ ↓ git clone / git pull
+Amazon EC2
+|------ ├── heartbeat.timer
+|------ │       ↓ every minute
+|------ │   heartbeat.service
+|------ │       ↓
+|------ │   heartbeat.py
+|------ │       ↓
+|------ │   /var/lib/heartbeat/events.jsonl
+|------ │
+|------ └── heartbeat-web.service
+|-------------- ↓ always running
+            Gunicorn + Flask
+|-------------- ↓
+            Reads events.jsonl
+|-------------- ↓
+            Browser
+```
 
 ## Repository structure
 
 ```text
 EC2_Heartbeat_Python_Automation/
 ├── src/
-│   └── heartbeat.py
+│   ├── heartbeat.py
+│   └── app.py
+├── templates/
+│   └── index.html
 ├── tests/
 │   └── test_heartbeat.py
 ├── systemd/
 │   ├── heartbeat.service
-│   └── heartbeat.timer
+│   ├── heartbeat.timer
+│   └── heartbeat-web.service
 ├── .gitignore
 ├── README.md
 └── requirements.txt
@@ -57,16 +70,19 @@ EC2_Heartbeat_Python_Automation/
 
 ## Python automation
 
+### app.py
+
+`app.py` is the Flask web app that reads the heartbeat events from `events.jsonl` and shows them on a simple dashboard. It exposes a few HTTP endpoints:
+
+- `/` renders the browser dashboard
+- `/api/events` returns the same data as JSON
+- `/health` returns a status response for quick health checks
+
+This keeps the monitoring page separate from the scheduled job itself.
+
 ### heartbeat.py
 
-The heartbeat script is responsible for generating a single event each time it runs. In practice, this means it:
-
-1. creates a unique run ID
-2. captures the current UTC time
-3. reads environment metadata
-4. records the EC2 hostname and job context
-5. writes a JSON object to the configured log file
-6. exits with an appropriate status code
+`heartbeat.py` creates one JSON heartbeat record each time the script runs. It gathers the job name, timestamp, EC2 hostname, environment, OS, Python version, and process ID, then appends that data to the log file.
 
 Example output:
 
@@ -84,22 +100,21 @@ Example output:
 }
 ```
 
+### index.html
+
+`index.html` is the dashboard page shown in the browser. It reads the event data from the Flask app and displays it in a table, with automatic refresh so the newest heartbeat records appear without reloading the page.
+
 ### test_heartbeat.py
 
-The test suite checks that the script produces a valid heartbeat record by verifying:
-
-- a valid GUID is generated
-- a timestamp is generated
-- required fields exist
-- the execution status is successful
+The test suite checks that the heartbeat output contains the expected fields and that the generated run ID and timestamp are valid.
 
 ### requirements.txt
 
-The automation itself uses Python's standard library. pytest is included only for testing support.
+This file lists the Python packages needed by the project. The core script uses the standard library, while the dashboard adds Flask and Gunicorn.
 
 ### .gitignore
 
-Generated log files and environment-specific configuration should not be committed to version control.
+This file keeps generated log data and environment-specific files out of source control.
 
 ## systemd service and timer notes
 
@@ -117,13 +132,17 @@ The checked-in service runs as the dedicated `heartbeat` account and uses the pa
 
 ### heartbeat.timer
 
-Persistent=true ensures the job is triggered again if the server was offline when the timer was scheduled to fire.
+`Persistent=true` ensures the job is triggered again if the server was offline when the timer was scheduled to fire.
+
+### heartbeat-web.service
+
+This service starts the Flask dashboard with Gunicorn so the web page stays available in the background. It uses the same `events.jsonl` file as the heartbeat job and restarts automatically if the app stops unexpectedly.
 
 ## Operational notes
 
 - Keep log output small and structured so it is easy to search and analyze.
 - Use consistent environment names across all EC2 instances to simplify filtering.
-- Store logs in a known location so they can be reviewed with journalctl or custom monitoring tools.
+- Store logs in a known location so they can be reviewed with `journalctl` or custom monitoring tools.
 - Treat the heartbeat as a lightweight health signal for automation jobs rather than as a full application telemetry system.
 
 This setup gives you a simple, low-overhead way to confirm that scheduled automation is running correctly and to trace execution history over time.
@@ -148,6 +167,14 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
+If the dashboard dependencies are missing, install them before running the web app:
+
+```bash
+python -m pip install flask gunicorn
+python -m pip freeze > requirements.txt
+```
+
 
 ### 2. On Windows PowerShell
 
@@ -216,7 +243,7 @@ Both commands append a heartbeat event to `events.jsonl` in the project director
 pytest -v
 ```
 
-Run this after setting up the environment to check that the heartbeat code behaves as expected. The `-v` option enables verbose output, listing each test by name and showing whether it passed or failed. The tests verify the heartbeat's status and required fields, and check that its run ID and timestamp have valid formats.
+Run this after setting up the environment to check that the heartbeat code behaves as expected. The `-v` option enables verbose output, listing each test by name and showing whether it passed or failed. The tests verify the heartbeat status and required fields, and check that the run ID and timestamp have valid formats.
 
 If you want to install test tooling manually:
 
@@ -249,11 +276,11 @@ chmod 400 my-ec2-key.pem
 ssh -i my-ec2-key.pem ec2-user@EC2_PUBLIC_IP
 ```
 
-Replace `my-ec2-key.pem` with the path to your downloaded private key and `EC2_PUBLIC_IP` with the instance's public IP address. Run these commands on your own computer, not in the EC2 shell.
+Replace `my-ec2-key.pem` with the path to your downloaded private key and `EC2_PUBLIC_IP` with the instance’s public IP address. Run these commands on your own computer, not inside the EC2 shell.
 
 ### 2. Install the application
 
-Run the following commands after connecting to the instance. The account is used to run the service without root privileges.
+Run the following commands after connecting to the instance. This account is used to run the service without root privileges.
 
 ```bash
 sudo dnf update -y
@@ -265,9 +292,27 @@ sudo useradd \
   --shell /sbin/nologin \
   heartbeat
 
+# this is to check it got created
+
+id heartbeat
+
+# This is to copy the main branch (either one)
+
 sudo git clone \
   https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
   /opt/EC2_Heartbeat_Python_Automation
+
+# This is to copy the data from another branch other than main (either one)
+
+sudo git clone \
+  --single-branch \
+  --branch EC2_Flask_Dashboard \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+
+  # if there is an error in the previous steps and you need to reinstall it, use the following: (Optional) 
+
+  sudo rm -rf /opt/EC2_Heartbeat_Python_Automation
 
 sudo chown -R \
   heartbeat:heartbeat \
@@ -281,11 +326,9 @@ sudo -u heartbeat \
   /opt/EC2_Heartbeat_Python_Automation/.venv/bin/python -m pip \
   install -r \
   /opt/EC2_Heartbeat_Python_Automation/requirements.txt
-```
 
-Create the event log directory. The service account needs write access because the script appends events there.
+# Create the event log directory. The service account needs write access because the script appends events there.
 
-```bash
 sudo mkdir -p /var/lib/heartbeat
 sudo chown heartbeat:heartbeat /var/lib/heartbeat
 sudo chmod 750 /var/lib/heartbeat
@@ -300,7 +343,7 @@ sudo -u heartbeat .venv/bin/python -m pytest -v
 
 ### 3. Install and enable the systemd timer
 
-Copy the service and timer definitions from the repository, then ask systemd to reload its configuration:
+Copy the service and timer definitions from the repository, then reload systemd:
 
 ```bash
 sudo cp \
@@ -309,16 +352,23 @@ sudo cp \
 sudo cp \
   /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
   /etc/systemd/system/heartbeat.timer
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat-web.service \
+  /etc/systemd/system/heartbeat-web.service
 
 sudo systemctl daemon-reload
 ```
 
-Run the service once manually to verify it can write its output, then enable the timer:
+Run the service once manually to confirm it can write output, then enable the timer:
 
 ```bash
 sudo systemctl start heartbeat.service
 sudo systemctl status heartbeat.service --no-pager
 sudo systemctl enable --now heartbeat.timer
+
+sudo systemctl start heartbeat-web.service
+sudo systemctl status heartbeat-web.service --no-pager
+sudo systemctl enable --now heartbeat-web.service
 ```
 
 The timer is configured to run the service once per minute. A successful one-shot service may show as `inactive (dead)` after it finishes; check its result and output rather than expecting it to remain running.
@@ -372,16 +422,34 @@ sudo cp \
 sudo cp \
   /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
   /etc/systemd/system/heartbeat.timer
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat-web.service \
+  /etc/systemd/system/heartbeat-web.service
+
 sudo systemctl daemon-reload
+
 sudo systemctl restart heartbeat.timer
+sudo systemctl restart heartbeat-web.service
 ```
+if you want to check if the servers are running, use these commands
+
+```bash
+sudo systemctl status heartbeat-web.service
+sudo systemctl status heartbeat.timer
+
+sudo journalctl -u heartbeat-web.service -n 50 --no-pager
+
+sudo systemctl is-enabled heartbeat-web.service
+sudo systemctl is-enabled heartbeat.timer
+
+sudo systemctl status heartbeat-web.service
+sudo journalctl -u heartbeat-web.service -n 30 --no-pager
+```
+
 
 ## Deploying with EC2 user data
 
-EC2 user data can automate the initial setup when an instance launches. The
-following example is for an Amazon Linux instance with `dnf`; it installs the
-required packages, configures the `heartbeat` service account and Python
-environment, runs the tests, and enables the systemd timer.
+EC2 user data can automate the initial setup when an instance launches. The following example is for an Amazon Linux instance using `dnf`. It installs the required packages, configures the `heartbeat` service account and Python environment, runs the tests, and enables the systemd timer.
 
 ```bash
 #!/bin/bash
@@ -432,7 +500,7 @@ mkdir -p /var/lib/heartbeat
 chown heartbeat:heartbeat /var/lib/heartbeat
 chmod 750 /var/lib/heartbeat
 
-# Run the test suite.
+# Run the test suite (Optional). this action is for testing and it may cause problems
 cd /opt/EC2_Heartbeat_Python_Automation
 
 sudo -u heartbeat \
@@ -447,17 +515,41 @@ cp \
   /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
   /etc/systemd/system/heartbeat.timer
 
+cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat-web.service \
+  /etc/systemd/system/heartbeat-web.service
+
 # Reload systemd, run the service once, and enable the recurring timer.
 systemctl daemon-reload
+
 systemctl start heartbeat.service
 systemctl enable --now heartbeat.timer
+
+systemctl start heartbeat-web.service
+systemctl enable --now heartbeat-web.service
 
 echo "Heartbeat automation deployment completed."
 ```
 
-User-data runs during instance initialization. Its output is written to
-`/var/log/user-data.log`. After the instance launches, connect to it and use
-the following commands to verify the deployment.
+You can also clone a specific branch instead of the default branch:
+
+```bash
+git clone \
+  --single-branch \
+  --branch EC2_Flask_Dashboard \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+```
+
+Instead of:
+
+```bash
+git clone \
+  https://github.com/Andrey242-GH/EC2_Heartbeat_Python_Automation.git \
+  /opt/EC2_Heartbeat_Python_Automation
+```
+
+User data runs during instance initialization. Its output is written to `/var/log/user-data.log`. After the instance launches, connect to it and use the following commands to verify the deployment.
 
 ### Confirm that the timer is scheduled
 
@@ -486,6 +578,199 @@ sudo journalctl \
   --since "10 minutes ago" \
   --no-pager
 ```
+
+## View output in a browser
+
+If you want to open your EC2 Public IPv4 address in a browser and view the Python automation output, your script must be running as a web application.
+
+Right now, the `heartbeat.py` script only writes to a file. There is nothing listening on port `80`, so you will likely see one of the following:
+
+- Connection refused
+- Timeout
+- Nginx default page (if Nginx is installed)
+- Blank page
+
+This is why the project includes `app.py`, which runs a Flask web application.
+
+The application provides three endpoints:
+
+- `/` — web dashboard
+- `/api/events` — raw JSON records
+- `/health` — application health check
+
+## Test it in Codespaces
+
+Install the requirements:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Generate several records:
+
+```bash
+OUTPUT_FILE="./events.jsonl" \
+ENVIRONMENT="codespaces" \
+JOB_NAME="guid-heartbeat" \
+python src/heartbeat.py
+```
+
+Then launch the Flask application:
+
+```bash
+OUTPUT_FILE="./events.jsonl" python src/app.py
+```
+
+For testing only, open a second Codespaces terminal and run:
+
+```bash
+while true
+do
+    OUTPUT_FILE="./events.jsonl" \
+    ENVIRONMENT="codespaces" \
+    JOB_NAME="guid-heartbeat" \
+    python src/heartbeat.py
+
+    sleep 10
+done
+```
+
+## Update the EC2 installation
+
+On EC2, pull your changes:
+
+```bash
+sudo -u heartbeat git \
+  -C /opt/EC2_Heartbeat_Python_Automation \
+  pull --ff-only origin main
+```
+
+Install requirements:
+
+```bash
+sudo -u heartbeat \
+/opt/EC2_Heartbeat_Python_Automation/.venv/bin/python \
+-m pip install \
+-r /opt/EC2_Heartbeat_Python_Automation/requirements.txt
+```
+
+Copy all three service files:
+
+```bash
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.service \
+  /etc/systemd/system/heartbeat.service
+
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat.timer \
+  /etc/systemd/system/heartbeat.timer
+
+sudo cp \
+  /opt/EC2_Heartbeat_Python_Automation/systemd/heartbeat-web.service \
+  /etc/systemd/system/heartbeat-web.service
+```
+
+Reload systemd:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Enable the timer and web application:
+
+```bash
+sudo systemctl enable --now heartbeat.timer
+sudo systemctl enable --now heartbeat-web.service
+```
+
+Verify both parts:
+
+Check the timer:
+
+```bash
+systemctl list-timers --all | grep heartbeat
+```
+
+Check the scheduled job:
+
+```bash
+sudo systemctl status heartbeat.service --no-pager
+```
+
+Check the web application:
+
+```bash
+sudo systemctl status heartbeat-web.service --no-pager
+```
+
+Check the saved events:
+
+```bash
+sudo tail -n 10 /var/lib/heartbeat/events.jsonl
+```
+
+Test the website from inside EC2:
+
+```bash
+curl http://localhost:5000/health
+```
+
+Expected response:
+
+```json
+{
+  "application": "ec2-heartbeat-automation",
+  "output_file": "/var/lib/heartbeat/events.jsonl",
+  "status": "healthy"
+}
+```
+
+Check whether port 5000 is listening:
+
+```bash
+sudo ss -ltnp | grep 5000
+```
+
+### Add the EC2 inbound rule
+
+For initial testing, add this inbound rule to the EC2 security group:
+
+- Type: Custom TCP
+- Protocol: TCP
+- Port: 5000
+- Source: My IP
+- Description: Heartbeat dashboard testing
+
+Using My IP limits access to your current public IP.
+
+Then open:
+
+```text
+http://YOUR_EC2_PUBLIC_IPV4:5000
+```
+
+Do not open only port 80 yet. For this setup, you must add `:5000`.
+
+i found a problem and it was that the gunicorn was not installed so I first entered 
+
+```bash
+ls -l /opt/EC2_Heartbeat_Python_Automation/.venv/bin/gunicorn
+```
+
+and i got this "No such file or directory"
+
+so i run this:
+
+```bash
+sudo -u heartbeat \
+/opt/EC2_Heartbeat_Python_Automation/.venv/bin/pip \
+install gunicorn flask
+```
+
+and it worked
 
 ## Summary
 
